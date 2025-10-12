@@ -320,16 +320,16 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 # Filter out NaN or infinite values
                 valid_mask = (~np.isnan(x)) & (~np.isnan(y)) & (~np.isinf(x)) & (~np.isinf(y))
                 x, y = x[valid_mask], y[valid_mask]
-                if len(x) > 1 and not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
+                if len(x) > 1:
                     ax.plot(x, y, linewidth=line_width, color=line_color)
-                    ax.set_aspect('equal')
-                    # Set axis limits based on data
-                    x_range = np.ptp(x) if np.ptp(x) > 0 else 1
-                    y_range = np.ptp(y) if np.ptp(y) > 0 else 1
-                    x_margin = x_range * 0.1
-                    y_margin = y_range * 0.1
+                    # Set axis limits based on data with proper margins
+                    x_range = np.ptp(x) if np.ptp(x) > 1e-6 else 2
+                    y_range = np.ptp(y) if np.ptp(y) > 1e-6 else 2
+                    x_margin = max(x_range * 0.15, 0.5)
+                    y_margin = max(y_range * 0.15, 0.5)
                     ax.set_xlim(np.min(x) - x_margin, np.max(x) + x_margin)
                     ax.set_ylim(np.min(y) - y_margin, np.max(y) + y_margin)
+                    ax.set_aspect('equal', adjustable='datalim')
                     ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=10)
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
