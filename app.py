@@ -1,4 +1,3 @@
-import streamlit as st
 import random
 import math
 import numpy as np
@@ -312,40 +311,25 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
         fig, ax = plt.subplots(figsize=(6, 6))  # Individual figure for each plot
         try:
             if plot_mode == 'parametric':
-                t = np.linspace(0, 2 * np.pi, 2000)  # Increased resolution
+                t = np.linspace(0, 2 * np.pi, 300)
                 x = np.array([x_tree.evaluate(t=ti) for ti in t])
                 y = np.array([y_tree.evaluate(t=ti) for ti in t])
-                x = np.clip(x, -100, 100)
-                y = np.clip(y, -100, 100)
-                # Filter out NaN or infinite values
-                valid_mask = (~np.isnan(x)) & (~np.isnan(y)) & (~np.isinf(x)) & (~np.isinf(y))
-                x, y = x[valid_mask], y[valid_mask]
-                if len(x) > 1:
+                x = np.clip(x, -50, 50)
+                y = np.clip(y, -50, 50)
+                if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                     ax.plot(x, y, linewidth=line_width, color=line_color)
-                    # Set axis limits based on data with proper margins
-                    x_range = np.ptp(x) if np.ptp(x) > 1e-6 else 2
-                    y_range = np.ptp(y) if np.ptp(y) > 1e-6 else 2
-                    x_margin = max(x_range * 0.15, 0.5)
-                    y_margin = max(y_range * 0.15, 0.5)
-                    ax.set_xlim(np.min(x) - x_margin, np.max(x) + x_margin)
-                    ax.set_ylim(np.min(y) - y_margin, np.max(y) + y_margin)
-                    ax.set_aspect('equal', adjustable='datalim')
+                    ax.set_aspect('equal')
                     ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=10)
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             elif plot_mode == 'polar':
                 t = np.linspace(0, 2 * np.pi, 300)
                 r = np.array([x_tree.evaluate(t=ti) for ti in t])
-                r = np.clip(r, -100, 100)
+                r = np.clip(r, -50, 50)
                 x, y = r * np.cos(t), r * np.sin(t)
                 if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                     ax.plot(x, y, linewidth=line_width, color=line_color)
                     ax.set_aspect('equal')
-                    # Set axis limits based on data
-                    max_extent = max(np.max(np.abs(x)), np.max(np.abs(y)))
-                    margin = max_extent * 0.1
-                    ax.set_xlim(-max_extent - margin, max_extent + margin)
-                    ax.set_ylim(-max_extent - margin, max_extent + margin)
                     ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nr = {x_tree.pretty_str()}\nNodes: {x_tree.size()}', fontsize=10)
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
@@ -357,13 +341,11 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 Z = np.array([[x_tree.evaluate(x=xi, y=yi) for xi in x_vals] for yi in y_vals])
                 Z = np.clip(Z, -50, 50)
                 cs = ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
-                ax.set_aspect('equal')
-                ax.set_xlim(-5, 5)
-                ax.set_ylim(-5, 5)
                 if cs.collections:
+                    ax.set_aspect('equal')
                     ax.set_title(f'Top {idx+1} - Score: {score:.3f}\n{x_tree.pretty_str()} = 0\nNodes: {x_tree.size()}', fontsize=10)
                 else:
-                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\n{x_tree.pretty_str()} = 0\nNodes: {x_tree.size()} (No zero contours)', fontsize=10)
+                    ax.text(0.5, 0.5, 'No Contours', ha='center', va='center', transform=ax.transAxes)
             
             ax.grid(True, alpha=0.3)
             ax.set_xticks([])
@@ -400,24 +382,14 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
     
     try:
         if plot_mode == 'parametric':
-            t = np.linspace(0, 2 * np.pi, 5000)  # Increased resolution
+            t = np.linspace(0, 2 * np.pi, 1500)
             x = np.array([x_tree.evaluate(t=ti) for ti in t])
             y = np.array([y_tree.evaluate(t=ti) for ti in t])
             x = np.clip(x, -100, 100)
             y = np.clip(y, -100, 100)
-            # Filter out NaN or infinite values
-            valid_mask = (~np.isnan(x)) & (~np.isnan(y)) & (~np.isinf(x)) & (~np.isinf(y))
-            x, y = x[valid_mask], y[valid_mask]
-            if len(x) > 1 and not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
+            if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                 ax.plot(x, y, linewidth=line_width, color=line_color)
                 ax.set_aspect('equal')
-                # Set axis limits based on data
-                x_range = np.ptp(x) if np.ptp(x) > 0 else 1
-                y_range = np.ptp(y) if np.ptp(y) > 0 else 1
-                x_margin = x_range * 0.1
-                y_margin = y_range * 0.1
-                ax.set_xlim(np.min(x) - x_margin, np.max(x) + x_margin)
-                ax.set_ylim(np.min(y) - y_margin, np.max(y) + y_margin)
                 ax.set_title(f'Best Plot - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=12)
             else:
                 ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
@@ -429,11 +401,6 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
             if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                 ax.plot(x, y, linewidth=line_width, color=line_color)
                 ax.set_aspect('equal')
-                # Set axis limits based on data
-                max_extent = max(np.max(np.abs(x)), np.max(np.abs(y)))
-                margin = max_extent * 0.1
-                ax.set_xlim(-max_extent - margin, max_extent + margin)
-                ax.set_ylim(-max_extent - margin, max_extent + margin)
                 ax.set_title(f'Best Plot - Score: {score:.3f}\nr = {x_tree.pretty_str()}\nNodes: {x_tree.size()}', fontsize=12)
             else:
                 ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
@@ -445,13 +412,11 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
             Z = np.array([[x_tree.evaluate(x=xi, y=yi) for xi in x_vals] for yi in y_vals])
             Z = np.clip(Z, -50, 50)
             cs = ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
-            ax.set_aspect('equal')
-            ax.set_xlim(-5, 5)
-            ax.set_ylim(-5, 5)
             if cs.collections:
+                ax.set_aspect('equal')
                 ax.set_title(f'Best Plot - Score: {score:.3f}\n{x_tree.pretty_str()} = 0\nNodes: {x_tree.size()}', fontsize=12)
             else:
-                ax.set_title(f'Best Plot - Score: {score:.3f}\n{x_tree.pretty_str()} = 0\nNodes: {x_tree.size()} (No zero contours)', fontsize=12)
+                ax.text(0.5, 0.5, 'No Contours', ha='center', va='center', transform=ax.transAxes)
         
         ax.grid(True, alpha=0.3)
         plt.tight_layout()
@@ -640,7 +605,7 @@ def main():
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            for gen, max_score, best_ever_score, population, scores in evolve_art(
+            for gen, max_score, all_time_best, population, scores in evolve_art(
                 generations, pop_size, plot_mode, weights, mutation_rate, elite_size, diversity_bonus, max_nodes
             ):
                 if not st.session_state.running:
@@ -648,7 +613,7 @@ def main():
                 
                 progress = gen / generations
                 progress_bar.progress(progress)
-                status_text.text(f"Generation {gen}/{generations}: Best {max_score:.3f} | All-time Best: {best_ever_score:.3f}")
+                status_text.text(f"Generation {gen}/{generations}: Best {max_score:.3f} | All-time Best: {all_time_best:.3f}")
                 
                 if gen % max(1, generations // 5) == 0 or gen == generations:
                     figs = plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=line_width, line_color=line_color)
