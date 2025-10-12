@@ -1,3 +1,7 @@
+# app.py - Enhanced Math Art Evolver Streamlit App
+# Run with: streamlit run app.py
+# GitHub-ready: Includes requirements.txt for deployment
+
 import streamlit as st
 import random
 import math
@@ -5,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import io
+import json
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -27,7 +32,7 @@ PRIMITIVES = {
 
 TERMINALS = ['t', 'x', 'y', 'pi', 'e', '1', '2', '0.5']
 
-# ============= EXPRESSION TREE WITH PRETTY PRINT =============
+# ============= EXPRESSION TREE WITH SERIALIZATION =============
 class Node:
     def __init__(self, value=None, children=None):
         self.value = value
@@ -97,6 +102,20 @@ class Node:
         elif self.value == 'mod':
             return f'{child_strs[0]} mod {child_strs[1]}'
         return f'{self.value}({", ".join(child_strs)})'
+
+    def to_dict(self):
+        """Convert Node to a serializable dictionary"""
+        return {
+            'value': self.value,
+            'children': [child.to_dict() for child in self.children]
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        """Reconstruct Node from dictionary"""
+        node = cls(value=data['value'])
+        node.children = [cls.from_dict(child) for child in data.get('children', [])]
+        return node
 
 # ============= SMART TREE GENERATION =============
 def random_tree(depth=3, method='grow', implicit=False):
@@ -238,7 +257,7 @@ def compute_fitness(x_tree, y_tree=None, plot_mode='parametric',
             scores['smooth'] = np.exp(-np.mean(np.abs(np.gradient(dr))) / 5.0)
             
         else:  # implicit
-            res = 60
+            res = 50  # Reduced for performance
             x = np.linspace(-5, 5, res)
             y = np.linspace(-5, 5, res)
             X, Y = np.meshgrid(x, y)
@@ -271,6 +290,7 @@ def compute_fitness(x_tree, y_tree=None, plot_mode='parametric',
         return max(0, min(10, total * 10)), scores
         
     except Exception as e:
+        st.warning(f"Fitness calculation error: {e}")
         return 0, {}
 
 # ============= VISUALIZATION WITH PRETTY EXPRESSIONS =============
@@ -303,7 +323,7 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 ax.set_aspect('equal')
                 ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nr = {x_tree.pretty_str()}', fontsize=8)
             else:  # implicit
-                res = 60
+                res = 50
                 x_vals = np.linspace(-5, 5, res)
                 y_vals = np.linspace(-5, 5, res)
                 X, Y = np.meshgrid(x_vals, y_vals)
@@ -374,11 +394,11 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
         st.error(f"Plot error: {e}")
     
     st.pyplot(fig)
+    return fig
 
-# ============= MAIN ALGORITHM (CACHED) =============
-@st.cache_data
-def evolve_art_cached(_params_hash, generations, pop_size, plot_mode, weights, mutation_rate, elite_size, diversity_bonus):
-    """Cached evolution to avoid recompute on UI changes"""
+# ============= MAIN ALGORITHM (NON-CACHED LOOP) =============
+def evolve_art(generations, pop_size, plot_mode, weights, mutation_rate, elite_size, diversity_bonus):
+    """Main evolution loop, non-cached for progress updates"""
     population = []
     for i in range(pop_size):
         method = 'grow' if i < pop_size // 2 else 'full'
@@ -452,37 +472,43 @@ def evolve_art_cached(_params_hash, generations, pop_size, plot_mode, weights, m
     
     st.session_state['best_individual'] = best_ever_individual
     st.session_state['best_score'] = best_ever_score
+    st.session_state['best_individual_dict'] = (
+        best_ever_individual[0].to_dict(),
+        best_ever_individual[1].to_dict() if best_ever_individual[1] else None
+    )
     return best_ever_individual, best_ever_score
 
 # ============= STREAMLIT UI =============
 def main():
     st.set_page_config(page_title="Math Art Evolver", page_icon="🎨", layout="wide")
     st.title("🎨 Math Art Evolver")
-    st.markdown("Evolve beautiful mathematical plots using genetic programming. Adjust parameters and create stunning art!")
+    st.markdown("Evolve beautiful mathematical plots using genetic programming. Adjust parameters to create stunning art!")
 
     if 'running' not in st.session_state:
         st.session_state.running = False
         st.session_state.best_individual = None
         st.session_state.best_score = 0
+        st.session_state.best_individual_dict = None
 
     st.sidebar.header("Evolution Parameters")
-    plot_mode = st.sidebar.selectbox("Plot Mode", ['parametric', 'polar', 'implicit'], index=0)
-    generations = st.sidebar.slider("Generations", 5, 50, 15, help="Number of evolution cycles")
+    plot_mode = st.sidebar.selectbox("Plot Mode", ['parametric', 'polar', 'implicit'], index=0,
+                                     help="Parametric: x(t), y(t); Polar: r(t); Implicit: f(x,y)=0")
+    generations = st.sidebar.slider("Generations", 5, 50, 15, help="Number of evolution cycles (higher = longer but better results)")
     pop_size = st.sidebar.slider("Population Size", 10, 100, 30, help="Number of individuals per generation")
-    elite_size = st.sidebar.slider("Elite Size", 1, 10, 3, help="Number of top individuals preserved")
-    mutation_rate = st.sidebar.slider("Mutation Rate", 0.05, 0.5, 0.15, help="Probability of mutation")
-    diversity_bonus = st.sidebar.slider("Diversity Bonus", 0.0, 0.5, 0.05, help="Encourages diverse solutions")
+    elite_size = st.sidebar.slider("Elite Size", 1, 10, 3, help="Number of top individuals preserved each generation")
+    mutation_rate = st.sidebar.slider("Mutation Rate", 0.05, 0.5, 0.15, help="Probability of random changes in expressions")
+    diversity_bonus = st.sidebar.slider("Diversity Bonus", 0.0, 0.5, 0.05, help="Encourages diverse patterns")
 
     st.sidebar.header("Aesthetic Weights (Beauty Parameters)")
     st.sidebar.markdown("Adjust weights to prioritize visual qualities:")
     col1, col2 = st.sidebar.columns(2)
     with col1:
-        even_weight = st.slider("Even Symmetry", 0.0, 1.0, 0.3, help="Mirror-like symmetry")
-        odd_weight = st.slider("Odd Symmetry", 0.0, 1.0, 0.1, help="Point reflection symmetry")
+        even_weight = st.slider("Even Symmetry", 0.0, 1.0, 0.3, help="Favors mirror-like symmetry (e.g., ellipses)")
+        odd_weight = st.slider("Odd Symmetry", 0.0, 1.0, 0.1, help="Favors point reflection symmetry")
     with col2:
-        rot_weight = st.slider("Rotational Symmetry", 0.0, 1.0, 0.25, help="Rotational patterns")
-        comp_weight = st.slider("Complexity", 0.0, 1.0, 0.2, help="Intricate patterns")
-    smooth_weight = st.sidebar.slider("Smoothness", 0.0, 1.0, 0.15, help="Smooth curves")
+        rot_weight = st.slider("Rotational Symmetry", 0.0, 1.0, 0.25, help="Favors star-like or floral patterns")
+        comp_weight = st.slider("Complexity", 0.0, 1.0, 0.2, help="Encourages intricate but not overwhelming patterns")
+    smooth_weight = st.sidebar.slider("Smoothness", 0.0, 1.0, 0.15, help="Promotes smooth curves over jagged ones")
 
     weights = {'even': even_weight, 'odd': odd_weight, 'rot': rot_weight, 'comp': comp_weight, 'smooth': smooth_weight}
     weight_sum = sum(weights.values())
@@ -490,32 +516,50 @@ def main():
         weights = {k: v / weight_sum for k, v in weights.items()}
 
     st.sidebar.header("Plot Style")
-    line_width = st.sidebar.slider("Line Width", 0.5, 5.0, 1.5)
-    line_color = st.sidebar.color_picker("Line Color", "#0000FF")
+    line_width = st.sidebar.slider("Line Width", 0.5, 5.0, 1.5, help="Thickness of plot lines")
+    line_color = st.sidebar.color_picker("Line Color", "#0000FF", help="Color of plot lines")
 
-    col1, col2 = st.sidebar.columns(2)
+    col1, col2, col3 = st.sidebar.columns(3)
     with col1:
         evolve_button = st.button("🚀 Evolve Art!")
     with col2:
         stop_button = st.button("🛑 Stop Evolution")
+    with col3:
+        save_button = st.button("💾 Save Best")
+
+    if save_button and st.session_state.best_individual_dict:
+        save_data = {
+            'plot_mode': plot_mode,
+            'best_score': st.session_state.best_score,
+            'x_tree': st.session_state.best_individual_dict[0],
+            'y_tree': st.session_state.best_individual_dict[1]
+        }
+        buf = io.BytesIO()
+        buf.write(json.dumps(save_data, indent=2).encode('utf-8'))
+        buf.seek(0)
+        st.download_button(
+            label="Download Evolution State as JSON",
+            data=buf.getvalue(),
+            file_name="math_art_state.json",
+            mime="application/json"
+        )
 
     if stop_button and st.session_state.running:
         st.session_state.running = False
         st.success("Evolution stopped. Displaying best result so far.")
         if st.session_state.best_individual:
-            plot_best(st.session_state.best_individual, plot_mode, st.session_state.best_score, line_width, line_color)
+            fig = plot_best(st.session_state.best_individual, plot_mode, st.session_state.best_score, line_width, line_color)
+            plt.close(fig)
         return
 
     if evolve_button and not st.session_state.running:
         st.session_state.running = True
         with st.spinner("Evolving mathematical art..."):
-            params_hash = hash((generations, pop_size, plot_mode, tuple(weights.values()), mutation_rate, elite_size, diversity_bonus))
-            
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            for gen, max_score, all_time_best, population, scores in evolve_art_cached(
-                params_hash, generations, pop_size, plot_mode, weights, mutation_rate, elite_size, diversity_bonus
+            for gen, max_score, all_time_best, population, scores in evolve_art(
+                generations, pop_size, plot_mode, weights, mutation_rate, elite_size, diversity_bonus
             ):
                 if not st.session_state.running:
                     break
@@ -533,7 +577,13 @@ def main():
                 st.session_state.running = False
                 st.success(f"✨ Evolution Complete! Best Score: {st.session_state.best_score:.3f}")
                 if st.session_state.best_individual:
-                    plot_best(st.session_state.best_individual, plot_mode, st.session_state.best_score, line_width, line_color)
+                    fig = plot_best(st.session_state.best_individual, plot_mode, st.session_state.best_score, line_width, line_color)
+                    plt.close(fig)
 
 if __name__ == "__main__":
     main()
+
+# For GitHub: Create requirements.txt with:
+# streamlit>=1.31.0
+# numpy>=1.24.0
+# matplotlib>=3.7.0
