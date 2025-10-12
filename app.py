@@ -3,7 +3,6 @@ import random
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
 import io
 import json
 import warnings
@@ -72,7 +71,6 @@ class Node:
         return Node(self.value, [child.copy() for child in self.children])
     
     def pretty_str(self):
-        """Improved string representation for readability"""
         if not self.children:
             return str(self.value)
         
@@ -100,7 +98,6 @@ class Node:
         return f'{self.value}({", ".join(child_strs)})'
 
     def to_dict(self):
-        """Convert Node to a serializable dictionary"""
         return {
             'value': self.value,
             'children': [child.to_dict() for child in self.children]
@@ -108,14 +105,12 @@ class Node:
 
     @classmethod
     def from_dict(cls, data):
-        """Reconstruct Node from dictionary"""
         node = cls(value=data['value'])
         node.children = [cls.from_dict(child) for child in data.get('children', [])]
         return node
 
 # ============= SMART TREE GENERATION =============
 def random_tree(depth=3, method='grow', implicit=False):
-    """Generate trees with ramped half-and-half initialization"""
     terminals = ['x', 'y', 'pi', 'e', '1', '2', '0.5'] if implicit else ['t', 'pi', 'e', '1', '2', '0.5']
     
     if depth == 0 or (method == 'grow' and random.random() < 0.3):
@@ -131,12 +126,10 @@ def random_tree(depth=3, method='grow', implicit=False):
 
 # ============= ADVANCED GENETIC OPERATORS =============
 def tournament_selection(population, scores, k=3):
-    """Select individual using tournament selection"""
     contestants = random.sample(list(zip(population, scores)), k)
     return max(contestants, key=lambda x: x[1])[0]
 
 def subtree_crossover(tree1, tree2):
-    """Smart crossover that preserves good subtrees"""
     tree1, tree2 = tree1.copy(), tree2.copy()
     
     def get_random_node(node, nodes=[]):
@@ -156,15 +149,14 @@ def subtree_crossover(tree1, tree2):
     
     return tree1, tree2
 
-def smart_mutation(tree, prob=0.1, implicit=False):
-    """Multiple mutation strategies"""
+def smart_mutation(tree, prob=0.2, implicit=False):
     tree = tree.copy()
     
     mutation_type = random.random()
     
     if mutation_type < prob:
-        return random_tree(depth=2, method='grow', implicit=implicit)
-    elif mutation_type < prob * 2:
+        return random_tree(depth=3, method='grow', implicit=implicit)
+    elif mutation_type < prob * 1.5:
         if random.random() < 0.5 and tree.value in PRIMITIVES:
             ops = [k for k, v in PRIMITIVES.items() if v[1] == PRIMITIVES[tree.value][1]]
             tree.value = random.choice(ops)
@@ -180,16 +172,18 @@ def smart_mutation(tree, prob=0.1, implicit=False):
 # ============= ENHANCED FITNESS WITH CACHING =============
 @st.cache_data
 def compute_contour_segments(_X, _Y, _Z):
-    """Cache contour segments for implicit mode"""
-    fig, ax = plt.subplots(figsize=(1, 1))
-    cs = ax.contour(_X, _Y, _Z, levels=[0])
-    num_segments = sum(len(col.get_paths()) for col in cs.collections)
-    plt.close(fig)
-    return num_segments
+    try:
+        fig, ax = plt.subplots(figsize=(1, 1))
+        cs = ax.contour(_X, _Y, _Z, levels=[0])
+        num_segments = sum(len(col.get_paths()) for col in cs.collections)
+        plt.close(fig)
+        return num_segments
+    except:
+        plt.close(fig)
+        return 0
 
 def compute_fitness(x_tree, y_tree=None, plot_mode='parametric', 
                     weights=None, diversity_bonus=0):
-    """Advanced fitness with normalized metrics and diversity"""
     if weights is None:
         weights = {'even': 0.3, 'odd': 0.1, 'rot': 0.25, 'comp': 0.2, 'smooth': 0.15}
     
@@ -211,22 +205,22 @@ def compute_fitness(x_tree, y_tree=None, plot_mode='parametric',
             y_neg = np.clip(y_neg, -100, 100)
             
             diff_even = np.mean(np.sqrt((x_neg[::-1] - x)**2 + (y_neg[::-1] - y)**2))
-            scores['even'] = np.exp(-diff_even)
+            scores['even'] = np.exp(-diff_even / 10)  # Scale down to increase sensitivity
             
             diff_odd = np.mean(np.sqrt((x_neg[::-1] + x)**2 + (y_neg[::-1] + y)**2))
-            scores['odd'] = np.exp(-diff_odd)
+            scores['odd'] = np.exp(-diff_odd / 10)
             
             x_rot = -x[::-1]
             y_rot = -y[::-1]
             diff_rot = np.mean(np.sqrt((x - x_rot)**2 + (y - y_rot)**2))
-            scores['rot'] = np.exp(-diff_rot)
+            scores['rot'] = np.exp(-diff_rot / 10)
             
             dx, dy = np.gradient(x), np.gradient(y)
             curvature = np.abs(np.gradient(dx) * dy - np.gradient(dy) * dx) / (dx**2 + dy**2 + 1e-10)**1.5
-            scores['comp'] = np.tanh(np.sum(np.abs(np.diff(np.sign(curvature)))) / 20.0)
+            scores['comp'] = np.tanh(np.sum(np.abs(np.diff(np.sign(curvature)))) / 30.0)
             
             smoothness = np.mean(np.abs(np.diff(dx))) + np.mean(np.abs(np.diff(dy)))
-            scores['smooth'] = np.exp(-smoothness / 10.0)
+            scores['smooth'] = np.exp(-smoothness / 15.0)
             
         elif plot_mode == 'polar':
             t = np.linspace(0, 2 * np.pi, 200)
@@ -235,62 +229,60 @@ def compute_fitness(x_tree, y_tree=None, plot_mode='parametric',
             
             r_neg = np.array([x_tree.evaluate(t=-ti) for ti in t])
             r_neg = np.clip(r_neg, -100, 100)
-            scores['even'] = np.exp(-np.mean(np.abs(r_neg[::-1] - r)))
+            scores['even'] = np.exp(-np.mean(np.abs(r_neg[::-1] - r)) / 10)
             
-            scores['odd'] = np.exp(-np.mean(np.abs(r_neg[::-1] + r)))
+            scores['odd'] = np.exp(-np.mean(np.abs(r_neg[::-1] + r)) / 10)
             
             rot_scores = []
             for n in [2, 3, 4, 5, 6]:
                 t_rot = (t + 2 * np.pi / n) % (2 * np.pi)
                 r_rot = np.array([x_tree.evaluate(t=ti) for ti in t_rot])
                 r_rot = np.clip(r_rot, -100, 100)
-                rot_scores.append(np.exp(-np.mean(np.abs(r - r_rot))))
+                rot_scores.append(np.exp(-np.mean(np.abs(r - r_rot)) / 10))
             scores['rot'] = max(rot_scores)
             
             dr = np.gradient(r)
-            scores['comp'] = np.tanh(np.sum(np.abs(np.diff(np.sign(dr)))) / 20.0)
+            scores['comp'] = np.tanh(np.sum(np.abs(np.diff(np.sign(dr)))) / 30.0)
             
-            scores['smooth'] = np.exp(-np.mean(np.abs(np.gradient(dr))) / 5.0)
+            scores['smooth'] = np.exp(-np.mean(np.abs(np.gradient(dr))) / 7.5)
             
         else:  # implicit
-            res = 40  # Reduced for performance
+            res = 40
             x = np.linspace(-5, 5, res)
             y = np.linspace(-5, 5, res)
             X, Y = np.meshgrid(x, y)
             Z = np.array([[x_tree.evaluate(x=xi, y=yi) for xi in x] for yi in y])
             Z = np.clip(Z, -100, 100)
             
-            scores['even'] = np.exp(-np.mean(np.abs(Z - Z[::-1, ::-1])))
+            # Check for zero crossings
+            has_zero_crossing = np.min(Z) < 0 < np.max(Z)
             
-            scores['odd'] = np.exp(-np.mean(np.abs(Z + Z[::-1, ::-1])))
+            scores['even'] = np.exp(-np.mean(np.abs(Z - Z[::-1, ::-1])) / 10)
+            scores['odd'] = np.exp(-np.mean(np.abs(Z + Z[::-1, ::-1])) / 10)
             
             Z_rot90 = np.rot90(Z)
             Z_rot180 = np.rot90(Z, 2)
-            scores['rot'] = max(np.exp(-np.mean(np.abs(Z - Z_rot90))), 
-                               np.exp(-np.mean(np.abs(Z - Z_rot180))))
+            scores['rot'] = max(np.exp(-np.mean(np.abs(Z - Z_rot90)) / 10), 
+                               np.exp(-np.mean(np.abs(Z - Z_rot180)) / 10))
             
             num_segments = compute_contour_segments(X, Y, Z)
-            scores['comp'] = np.tanh(num_segments / 15.0)
+            scores['comp'] = np.tanh(num_segments / 20.0) if num_segments > 0 else 0
             
             grad_x, grad_y = np.gradient(Z)
             smoothness = np.mean(np.sqrt(grad_x**2 + grad_y**2))
-            scores['smooth'] = np.exp(-smoothness / 5.0)
+            scores['smooth'] = np.exp(-smoothness / 7.5)
             
-            # Add crossing bonus to encourage zero crossings
-            min_z = np.min(Z)
-            max_z = np.max(Z)
-            crossing = 1 if min_z < 0 < max_z else 0
+            if not has_zero_crossing:
+                scores['comp'] = 0  # Penalize lack of zero crossings
         
         tree_size = x_tree.size() + (y_tree.size() if y_tree else 0)
-        size_penalty = 0.8 if tree_size < 3 else (0.85 if tree_size < 5 else 
+        size_penalty = 0.7 if tree_size < 3 else (0.8 if tree_size < 5 else 
                          (0.9 if tree_size > 40 else (0.95 if tree_size > 50 else 1.0)))
         
         total = sum(weights[k] * scores[k] for k in scores.keys())
-        if plot_mode == 'implicit':
-            total += crossing * 0.2
-        total = total * size_penalty + diversity_bonus
+        total = total * size_penalty + diversity_bonus * 2  # Increase diversity impact
         
-        return max(0, min(10, total * 10)), scores
+        return max(0, min(15, total * 7)), scores  # Adjusted scaling and max score
         
     except Exception as e:
         st.warning(f"Fitness calculation error: {e}")
@@ -298,7 +290,6 @@ def compute_fitness(x_tree, y_tree=None, plot_mode='parametric',
 
 # ============= VISUALIZATION WITH PRETTY EXPRESSIONS =============
 def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5, line_color='blue'):
-    """Plot top individuals in a grid with expressions"""
     sorted_pairs = sorted(zip(scores, population), key=lambda x: x[0], reverse=True)[:top_n]
     
     fig, axs = plt.subplots(1, top_n, figsize=(5 * top_n, 5))
@@ -314,17 +305,23 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 y = np.array([y_tree.evaluate(t=ti) for ti in t])
                 x = np.clip(x, -50, 50)
                 y = np.clip(y, -50, 50)
-                ax.plot(x, y, linewidth=line_width, color=line_color)
-                ax.set_aspect('equal')
-                ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}', fontsize=8)
+                if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
+                    ax.plot(x, y, linewidth=line_width, color=line_color)
+                    ax.set_aspect('equal')
+                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}', fontsize=8)
+                else:
+                    ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             elif plot_mode == 'polar':
                 t = np.linspace(0, 2 * np.pi, 300)
                 r = np.array([x_tree.evaluate(t=ti) for ti in t])
                 r = np.clip(r, -50, 50)
                 x, y = r * np.cos(t), r * np.sin(t)
-                ax.plot(x, y, linewidth=line_width, color=line_color)
-                ax.set_aspect('equal')
-                ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nr = {x_tree.pretty_str()}', fontsize=8)
+                if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
+                    ax.plot(x, y, linewidth=line_width, color=line_color)
+                    ax.set_aspect('equal')
+                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nr = {x_tree.pretty_str()}', fontsize=8)
+                else:
+                    ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             else:  # implicit
                 res = 50
                 x_vals = np.linspace(-5, 5, res)
@@ -332,9 +329,12 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 X, Y = np.meshgrid(x_vals, y_vals)
                 Z = np.array([[x_tree.evaluate(x=xi, y=yi) for xi in x_vals] for yi in y_vals])
                 Z = np.clip(Z, -50, 50)
-                ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
-                ax.set_aspect('equal')
-                ax.set_title(f'Top {idx+1} - Score: {score:.3f}\n{x_tree.pretty_str()} = 0', fontsize=8)
+                cs = ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
+                if cs.collections:
+                    ax.set_aspect('equal')
+                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\n{x_tree.pretty_str()} = 0', fontsize=8)
+                else:
+                    ax.text(0.5, 0.5, 'No Contours', ha='center', va='center', transform=ax.transAxes)
             
             ax.grid(True, alpha=0.3)
             ax.set_xticks([])
@@ -347,7 +347,6 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
     return fig
 
 def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'):
-    """Plot the best individual with download option"""
     x_tree, y_tree = best_individual
     fig, ax = plt.subplots(figsize=(10, 8))
     
@@ -358,27 +357,36 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
             y = np.array([y_tree.evaluate(t=ti) for ti in t])
             x = np.clip(x, -100, 100)
             y = np.clip(y, -100, 100)
-            ax.plot(x, y, linewidth=line_width, color=line_color)
-            ax.set_aspect('equal')
-            ax.set_title(f'Best Plot - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}', fontsize=12)
+            if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
+                ax.plot(x, y, linewidth=line_width, color=line_color)
+                ax.set_aspect('equal')
+                ax.set_title(f'Best Plot - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}', fontsize=12)
+            else:
+                ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
         elif plot_mode == 'polar':
             t = np.linspace(0, 2 * np.pi, 1500)
             r = np.array([x_tree.evaluate(t=ti) for ti in t])
             r = np.clip(r, -100, 100)
             x, y = r * np.cos(t), r * np.sin(t)
-            ax.plot(x, y, linewidth=line_width, color=line_color)
-            ax.set_aspect('equal')
-            ax.set_title(f'Best Plot - Score: {score:.3f}\nr = {x_tree.pretty_str()}', fontsize=12)
+            if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
+                ax.plot(x, y, linewidth=line_width, color=line_color)
+                ax.set_aspect('equal')
+                ax.set_title(f'Best Plot - Score: {score:.3f}\nr = {x_tree.pretty_str()}', fontsize=12)
+            else:
+                ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
         else:  # implicit
             res = 100
             x_vals = np.linspace(-5, 5, res)
             y_vals = np.linspace(-5, 5, res)
             X, Y = np.meshgrid(x_vals, y_vals)
             Z = np.array([[x_tree.evaluate(x=xi, y=yi) for xi in x_vals] for yi in y_vals])
-            Z = np.clip(Z, -100, 100)
-            ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
-            ax.set_aspect('equal')
-            ax.set_title(f'Best Plot - Score: {score:.3f}\n{x_tree.pretty_str()} = 0', fontsize=12)
+            Z = np.clip(Z, -50, 50)
+            cs = ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
+            if cs.collections:
+                ax.set_aspect('equal')
+                ax.set_title(f'Best Plot - Score: {score:.3f}\n{x_tree.pretty_str()} = 0', fontsize=12)
+            else:
+                ax.text(0.5, 0.5, 'No Contours', ha='center', va='center', transform=ax.transAxes)
         
         ax.grid(True, alpha=0.3)
         plt.tight_layout()
@@ -399,13 +407,12 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
     st.pyplot(fig)
     return fig
 
-# ============= MAIN ALGORITHM (NON-CACHED LOOP) =============
+# ============= MAIN ALGORITHM =============
 def evolve_art(generations, pop_size, plot_mode, weights, mutation_rate, elite_size, diversity_bonus):
-    """Main evolution loop, non-cached for progress updates"""
     population = []
     for i in range(pop_size):
         method = 'grow' if i < pop_size // 2 else 'full'
-        depth = random.randint(2, 4)
+        depth = random.randint(2, 5)  # Increased max depth for complexity
         if plot_mode != 'implicit':
             x_tree = random_tree(depth=depth, method=method, implicit=False)
             y_tree = random_tree(depth=depth, method=method, implicit=False)
@@ -468,10 +475,10 @@ def evolve_art(generations, pop_size, plot_mode, weights, mutation_rate, elite_s
         
         population = new_population[:pop_size]
         
-        if stagnation_counter > 3:
-            mutation_rate = min(0.3, mutation_rate * 1.2)
+        if stagnation_counter > 5:  # Increased threshold
+            mutation_rate = min(0.4, mutation_rate * 1.3)  # More aggressive increase
         elif stagnation_counter == 0:
-            mutation_rate = max(0.1, mutation_rate * 0.9)
+            mutation_rate = max(0.1, mutation_rate * 0.8)  # More aggressive decrease
     
     st.session_state['best_individual'] = best_ever_individual
     st.session_state['best_score'] = best_ever_score
@@ -496,13 +503,18 @@ def main():
     st.sidebar.header("Evolution Parameters")
     plot_mode = st.sidebar.selectbox("Plot Mode", ['parametric', 'polar', 'implicit'], index=0,
                                      help="Parametric: x(t), y(t); Polar: r(t); Implicit: f(x,y)=0")
-    generations = st.sidebar.number_input("Generations", min_value=1, value=15, help="Number of evolution cycles (higher = longer but better results)")
-    pop_size = st.sidebar.number_input("Population Size", min_value=1, value=30, help="Number of individuals per generation")
-    elite_size = st.sidebar.slider("Elite Size", 1, min(10, pop_size), 3, help="Number of top individuals preserved each generation")
-    mutation_rate = st.sidebar.slider("Mutation Rate", 0.05, 0.5, 0.15, help="Probability of random changes in expressions")
-    diversity_bonus = st.sidebar.slider("Diversity Bonus", 0.0, 0.5, 0.05, help="Encourages diverse patterns")
+    generations = st.sidebar.number_input("Generations", min_value=1, max_value=500, value=15,
+                                         help="Number of evolution cycles (higher = longer but better results)")
+    pop_size = st.sidebar.number_input("Population Size", min_value=10, max_value=500, value=30,
+                                       help="Number of individuals per generation")
+    elite_size = st.sidebar.slider("Elite Size", 1, min(10, pop_size), 3,
+                                   help="Number of top individuals preserved each generation")
+    mutation_rate = st.sidebar.slider("Mutation Rate", 0.05, 0.5, 0.15,
+                                      help="Probability of random changes in expressions")
+    diversity_bonus = st.sidebar.slider("Diversity Bonus", 0.0, 1.0, 0.1,
+                                        help="Encourages diverse patterns")
 
-    st.sidebar.header("Aesthetic Weights (Beauty Parameters)")
+    st.sidebar.header("Aesthetic Weights")
     st.sidebar.markdown("Adjust weights to prioritize visual qualities:")
     col1, col2 = st.sidebar.columns(2)
     with col1:
@@ -510,8 +522,8 @@ def main():
         odd_weight = st.slider("Odd Symmetry", 0.0, 1.0, 0.1, help="Favors point reflection symmetry")
     with col2:
         rot_weight = st.slider("Rotational Symmetry", 0.0, 1.0, 0.25, help="Favors star-like or floral patterns")
-        comp_weight = st.slider("Complexity", 0.0, 1.0, 0.2, help="Encourages intricate but not overwhelming patterns")
-    smooth_weight = st.sidebar.slider("Smoothness", 0.0, 1.0, 0.15, help="Promotes smooth curves over jagged ones")
+        comp_weight = st.slider("Complexity", 0.0, 1.0, 0.2, help="Encourages intricate patterns")
+    smooth_weight = st.sidebar.slider("Smoothness", 0.0, 1.0, 0.15, help="Promotes smooth curves")
 
     weights = {'even': even_weight, 'odd': odd_weight, 'rot': rot_weight, 'comp': comp_weight, 'smooth': smooth_weight}
     weight_sum = sum(weights.values())
