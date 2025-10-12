@@ -1,7 +1,3 @@
-# app.py - Enhanced Math Art Evolver Streamlit App
-# Run with: streamlit run app.py
-# GitHub-ready: Includes requirements.txt for deployment
-
 import streamlit as st
 import random
 import math
@@ -257,7 +253,7 @@ def compute_fitness(x_tree, y_tree=None, plot_mode='parametric',
             scores['smooth'] = np.exp(-np.mean(np.abs(np.gradient(dr))) / 5.0)
             
         else:  # implicit
-            res = 50  # Reduced for performance
+            res = 40  # Reduced for performance
             x = np.linspace(-5, 5, res)
             y = np.linspace(-5, 5, res)
             X, Y = np.meshgrid(x, y)
@@ -279,12 +275,19 @@ def compute_fitness(x_tree, y_tree=None, plot_mode='parametric',
             grad_x, grad_y = np.gradient(Z)
             smoothness = np.mean(np.sqrt(grad_x**2 + grad_y**2))
             scores['smooth'] = np.exp(-smoothness / 5.0)
+            
+            # Add crossing bonus to encourage zero crossings
+            min_z = np.min(Z)
+            max_z = np.max(Z)
+            crossing = 1 if min_z < 0 < max_z else 0
         
         tree_size = x_tree.size() + (y_tree.size() if y_tree else 0)
         size_penalty = 0.8 if tree_size < 3 else (0.85 if tree_size < 5 else 
                          (0.9 if tree_size > 40 else (0.95 if tree_size > 50 else 1.0)))
         
         total = sum(weights[k] * scores[k] for k in scores.keys())
+        if plot_mode == 'implicit':
+            total += crossing * 0.2
         total = total * size_penalty + diversity_bonus
         
         return max(0, min(10, total * 10)), scores
@@ -493,9 +496,9 @@ def main():
     st.sidebar.header("Evolution Parameters")
     plot_mode = st.sidebar.selectbox("Plot Mode", ['parametric', 'polar', 'implicit'], index=0,
                                      help="Parametric: x(t), y(t); Polar: r(t); Implicit: f(x,y)=0")
-    generations = st.sidebar.slider("Generations", 5, 50, 15, help="Number of evolution cycles (higher = longer but better results)")
-    pop_size = st.sidebar.slider("Population Size", 10, 100, 30, help="Number of individuals per generation")
-    elite_size = st.sidebar.slider("Elite Size", 1, 10, 3, help="Number of top individuals preserved each generation")
+    generations = st.sidebar.number_input("Generations", min_value=1, value=15, help="Number of evolution cycles (higher = longer but better results)")
+    pop_size = st.sidebar.number_input("Population Size", min_value=1, value=30, help="Number of individuals per generation")
+    elite_size = st.sidebar.slider("Elite Size", 1, min(10, pop_size), 3, help="Number of top individuals preserved each generation")
     mutation_rate = st.sidebar.slider("Mutation Rate", 0.05, 0.5, 0.15, help="Probability of random changes in expressions")
     diversity_bonus = st.sidebar.slider("Diversity Bonus", 0.0, 0.5, 0.05, help="Encourages diverse patterns")
 
@@ -582,8 +585,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# For GitHub: Create requirements.txt with:
-# streamlit>=1.31.0
-# numpy>=1.24.0
-# matplotlib>=3.7.0
