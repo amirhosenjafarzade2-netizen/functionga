@@ -312,19 +312,22 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
         fig, ax = plt.subplots(figsize=(6, 6))  # Individual figure for each plot
         try:
             if plot_mode == 'parametric':
-                t = np.linspace(0, 2 * np.pi, 1000)
+                t = np.linspace(0, 2 * np.pi, 2000)  # Increased resolution
                 x = np.array([x_tree.evaluate(t=ti) for ti in t])
                 y = np.array([y_tree.evaluate(t=ti) for ti in t])
                 x = np.clip(x, -100, 100)
                 y = np.clip(y, -100, 100)
-                if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
+                # Filter out NaN or infinite values
+                valid_mask = (~np.isnan(x)) & (~np.isnan(y)) & (~np.isinf(x)) & (~np.isinf(y))
+                x, y = x[valid_mask], y[valid_mask]
+                if len(x) > 1 and not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                     ax.plot(x, y, linewidth=line_width, color=line_color)
                     ax.set_aspect('equal')
                     ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=10)
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             elif plot_mode == 'polar':
-                t = np.linspace(0, 2 * np.pi, 1000)
+                t = np.linspace(0, 2 * np.pi, 300)
                 r = np.array([x_tree.evaluate(t=ti) for ti in t])
                 r = np.clip(r, -100, 100)
                 x, y = r * np.cos(t), r * np.sin(t)
@@ -335,12 +338,12 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             else:  # implicit
-                res = 100
+                res = 50
                 x_vals = np.linspace(-5, 5, res)
                 y_vals = np.linspace(-5, 5, res)
                 X, Y = np.meshgrid(x_vals, y_vals)
                 Z = np.array([[x_tree.evaluate(x=xi, y=yi) for xi in x_vals] for yi in y_vals])
-                Z = np.clip(Z, -100, 100)
+                Z = np.clip(Z, -50, 50)
                 cs = ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
                 if cs.collections:
                     ax.set_aspect('equal')
@@ -383,12 +386,15 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
     
     try:
         if plot_mode == 'parametric':
-            t = np.linspace(0, 2 * np.pi, 1500)
+            t = np.linspace(0, 2 * np.pi, 5000)  # Increased resolution
             x = np.array([x_tree.evaluate(t=ti) for ti in t])
             y = np.array([y_tree.evaluate(t=ti) for ti in t])
             x = np.clip(x, -100, 100)
             y = np.clip(y, -100, 100)
-            if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
+            # Filter out NaN or infinite values
+            valid_mask = (~np.isnan(x)) & (~np.isnan(y)) & (~np.isinf(x)) & (~np.isinf(y))
+            x, y = x[valid_mask], y[valid_mask]
+            if len(x) > 1 and not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                 ax.plot(x, y, linewidth=line_width, color=line_color)
                 ax.set_aspect('equal')
                 ax.set_title(f'Best Plot - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=12)
@@ -411,7 +417,7 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
             y_vals = np.linspace(-5, 5, res)
             X, Y = np.meshgrid(x_vals, y_vals)
             Z = np.array([[x_tree.evaluate(x=xi, y=yi) for xi in x_vals] for yi in y_vals])
-            Z = np.clip(Z, -100, 100)
+            Z = np.clip(Z, -50, 50)
             cs = ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
             if cs.collections:
                 ax.set_aspect('equal')
@@ -472,7 +478,7 @@ def evolve_art(generations, pop_size, plot_mode, weights, mutation_rate, elite_s
         else:
             stagnation_counter += 1
         
-        yield gen + 1, max_score, best_ever_score, population, scores
+        yield gen + 1, max_score, all_time_best, population, scores
         
         new_population = []
         sorted_pairs = sorted(zip(scores, population), key=lambda x: x[0], reverse=True)
