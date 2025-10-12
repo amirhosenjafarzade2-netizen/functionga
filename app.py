@@ -110,26 +110,36 @@ class Node:
         return node
 
 # ============= SMART TREE GENERATION =============
-def random_tree(depth=3, method='grow', implicit=False):
+def random_tree(depth=3, method='grow', implicit=False, max_nodes=20, current_nodes=1):
     terminals = ['x', 'y', 'pi', 'e', '1', '2', '0.5'] if implicit else ['t', 'pi', 'e', '1', '2', '0.5']
     
-    if depth == 0 or (method == 'grow' and random.random() < 0.3):
-        return Node(random.choice(terminals))
+    if depth == 0 or current_nodes >= max_nodes or (method == 'grow' and random.random() < 0.3):
+        return Node(random.choice(terminals)), current_nodes + 1
     
     ops = list(PRIMITIVES.keys())
     weights = [3 if op in ['add', 'mul', 'sin', 'cos'] else 1 for op in ops]
     op = random.choices(ops, weights=weights)[0]
     _, arity = PRIMITIVES[op]
     
-    children = [random_tree(depth-1, method, implicit) for _ in range(arity)]
-    return Node(op, children)
+    children = []
+    nodes_used = current_nodes + 1  # Count the current node
+    for _ in range(arity):
+        if nodes_used < max_nodes:
+            child, child_nodes = random_tree(depth-1, method, implicit, max_nodes, nodes_used)
+            children.append(child)
+            nodes_used = child_nodes
+        else:
+            children.append(Node(random.choice(terminals)))
+            nodes_used += 1
+    
+    return Node(op, children), nodes_used
 
 # ============= ADVANCED GENETIC OPERATORS =============
 def tournament_selection(population, scores, k=3):
     contestants = random.sample(list(zip(population, scores)), k)
     return max(contestants, key=lambda x: x[1])[0]
 
-def subtree_crossover(tree1, tree2):
+def subtree_crossover(tree1, tree2, max_nodes=20):
     tree1, tree2 = tree1.copy(), tree2.copy()
     
     def get_random_node(node, nodes=[]):
@@ -144,18 +154,23 @@ def subtree_crossover(tree1, tree2):
     if len(nodes1) > 1 and len(nodes2) > 1:
         n1 = random.choice(nodes1[1:])
         n2 = random.choice(nodes2[1:])
-        n1.value, n2.value = n2.value, n1.value
-        n1.children, n2.children = n2.children, n1.children
+        # Check if swapping subtrees keeps tree sizes within max_nodes
+        size1 = tree1.size() - n1.size() + n2.size()
+        size2 = tree2.size() - n2.size() + n1.size()
+        if size1 <= max_nodes and size2 <= max_nodes:
+            n1.value, n2.value = n2.value, n1.value
+            n1.children, n2.children = n2.children, n1.children
     
     return tree1, tree2
 
-def smart_mutation(tree, prob=0.2, implicit=False):
+def smart_mutation(tree, prob=0.2, implicit=False, max_nodes=20):
     tree = tree.copy()
     
     mutation_type = random.random()
     
     if mutation_type < prob:
-        return random_tree(depth=3, method='grow', implicit=implicit)
+        new_tree, _ = random_tree(depth=3, method='grow', implicit=implicit, max_nodes=max_nodes)
+        return new_tree
     elif mutation_type < prob * 1.5:
         if random.random() < 0.5 and tree.value in PRIMITIVES:
             ops = [k for k, v in PRIMITIVES.items() if v[1] == PRIMITIVES[tree.value][1]]
@@ -165,7 +180,8 @@ def smart_mutation(tree, prob=0.2, implicit=False):
             tree.value = random.choice(terminals)
     
     for i in range(len(tree.children)):
-        tree.children[i] = smart_mutation(tree.children[i], prob, implicit)
+        if tree.size() < max_nodes:
+            tree.children[i] = smart_mutation(tree.children[i], prob, implicit, max_nodes)
     
     return tree
 
@@ -205,7 +221,7 @@ def compute_fitness(x_tree, y_tree=None, plot_mode='parametric',
             y_neg = np.clip(y_neg, -100, 100)
             
             diff_even = np.mean(np.sqrt((x_neg[::-1] - x)**2 + (y_neg[::-1] - y)**2))
-            scores['even'] = np.exp(-diff_even / 10)  # Scale down to increase sensitivity
+            scores['even'] = np.exp(-diff_even / 10)
             
             diff_odd = np.mean(np.sqrt((x_neg[::-1] + x)**2 + (y_neg[::-1] + y)**2))
             scores['odd'] = np.exp(-diff_odd / 10)
@@ -254,7 +270,6 @@ def compute_fitness(x_tree, y_tree=None, plot_mode='parametric',
             Z = np.array([[x_tree.evaluate(x=xi, y=yi) for xi in x] for yi in y])
             Z = np.clip(Z, -100, 100)
             
-            # Check for zero crossings
             has_zero_crossing = np.min(Z) < 0 < np.max(Z)
             
             scores['even'] = np.exp(-np.mean(np.abs(Z - Z[::-1, ::-1])) / 10)
@@ -273,16 +288,16 @@ def compute_fitness(x_tree, y_tree=None, plot_mode='parametric',
             scores['smooth'] = np.exp(-smoothness / 7.5)
             
             if not has_zero_crossing:
-                scores['comp'] = 0  # Penalize lack of zero crossings
-        
+                scores['comp'] = 0
+    
         tree_size = x_tree.size() + (y_tree.size() if y_tree else 0)
         size_penalty = 0.7 if tree_size < 3 else (0.8 if tree_size < 5 else 
                          (0.9 if tree_size > 40 else (0.95 if tree_size > 50 else 1.0)))
         
         total = sum(weights[k] * scores[k] for k in scores.keys())
-        total = total * size_penalty + diversity_bonus * 2  # Increase diversity impact
+        total = total * size_penalty + diversity_bonus * 2
         
-        return max(0, min(15, total * 7)), scores  # Adjusted scaling and max score
+        return max(0, min(15, total * 7)), scores
         
     except Exception as e:
         st.warning(f"Fitness calculation error: {e}")
@@ -296,7 +311,13 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
     if top_n == 1:
         axs = [axs]
     
-    for idx, (score, (x_tree, y_tree)) in enumerate(sorted_pairs):
+    for idx, (score, (x_tree, y_tree)) in enumerateറ
+
+System: The code was cut off due to the character limit. Below is the continuation of the modified code, completing the `plot_generation` function and the rest of the program, incorporating the `max_nodes` parameter for controlling the maximum number of nodes (subfunctions) in the expression trees.
+
+```python
+# Continuation of plot_generation
+enumerate(sorted_pairs):
         ax = axs[idx]
         try:
             if plot_mode == 'parametric':
@@ -308,7 +329,7 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                     ax.plot(x, y, linewidth=line_width, color=line_color)
                     ax.set_aspect('equal')
-                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}', fontsize=8)
+                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=8)
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             elif plot_mode == 'polar':
@@ -319,7 +340,7 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                     ax.plot(x, y, linewidth=line_width, color=line_color)
                     ax.set_aspect('equal')
-                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nr = {x_tree.pretty_str()}', fontsize=8)
+                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nr = {x_tree.pretty_str()}\nNodes: {x_tree.size()}', fontsize=8)
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             else:  # implicit
@@ -332,7 +353,7 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 cs = ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
                 if cs.collections:
                     ax.set_aspect('equal')
-                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\n{x_tree.pretty_str()} = 0', fontsize=8)
+                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\n{x_tree.pretty_str()} = 0\nNodes: {x_tree.size()}', fontsize=8)
                 else:
                     ax.text(0.5, 0.5, 'No Contours', ha='center', va='center', transform=ax.transAxes)
             
@@ -360,7 +381,7 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
             if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                 ax.plot(x, y, linewidth=line_width, color=line_color)
                 ax.set_aspect('equal')
-                ax.set_title(f'Best Plot - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}', fontsize=12)
+                ax.set_title(f'Best Plot - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=12)
             else:
                 ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
         elif plot_mode == 'polar':
@@ -371,7 +392,7 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
             if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                 ax.plot(x, y, linewidth=line_width, color=line_color)
                 ax.set_aspect('equal')
-                ax.set_title(f'Best Plot - Score: {score:.3f}\nr = {x_tree.pretty_str()}', fontsize=12)
+                ax.set_title(f'Best Plot - Score: {score:.3f}\nr = {x_tree.pretty_str()}\nNodes: {x_tree.size()}', fontsize=12)
             else:
                 ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
         else:  # implicit
@@ -384,7 +405,7 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
             cs = ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
             if cs.collections:
                 ax.set_aspect('equal')
-                ax.set_title(f'Best Plot - Score: {score:.3f}\n{x_tree.pretty_str()} = 0', fontsize=12)
+                ax.set_title(f'Best Plot - Score: {score:.3f}\n{x_tree.pretty_str()} = 0\nNodes: {x_tree.size()}', fontsize=12)
             else:
                 ax.text(0.5, 0.5, 'No Contours', ha='center', va='center', transform=ax.transAxes)
         
@@ -408,17 +429,17 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
     return fig
 
 # ============= MAIN ALGORITHM =============
-def evolve_art(generations, pop_size, plot_mode, weights, mutation_rate, elite_size, diversity_bonus):
+def evolve_art(generations, pop_size, plot_mode, weights, mutation_rate, elite_size, diversity_bonus, max_nodes):
     population = []
     for i in range(pop_size):
         method = 'grow' if i < pop_size // 2 else 'full'
-        depth = random.randint(2, 5)  # Increased max depth for complexity
+        depth = random.randint(2, 5)
         if plot_mode != 'implicit':
-            x_tree = random_tree(depth=depth, method=method, implicit=False)
-            y_tree = random_tree(depth=depth, method=method, implicit=False)
+            x_tree, _ = random_tree(depth=depth, method=method, implicit=False, max_nodes=max_nodes)
+            y_tree, _ = random_tree(depth=depth, method=method, implicit=False, max_nodes=max_nodes)
             population.append((x_tree, y_tree))
         else:
-            x_tree = random_tree(depth=depth, method=method, implicit=True)
+            x_tree, _ = random_tree(depth=depth, method=method, implicit=True, max_nodes=max_nodes)
             population.append((x_tree, None))
     
     best_ever_score = 0
@@ -453,32 +474,32 @@ def evolve_art(generations, pop_size, plot_mode, weights, mutation_rate, elite_s
             parent2 = tournament_selection(population, scores, k=3)
             
             if plot_mode != 'implicit':
-                child1_x, child2_x = subtree_crossover(parent1[0], parent2[0])
-                child1_y, child2_y = subtree_crossover(parent1[1], parent2[1])
+                child1_x, child2_x = subtree_crossover(parent1[0], parent2[0], max_nodes)
+                child1_y, child2_y = subtree_crossover(parent1[1], parent2[1], max_nodes)
                 
-                child1_x = smart_mutation(child1_x, mutation_rate, False)
-                child1_y = smart_mutation(child1_y, mutation_rate, False)
+                child1_x = smart_mutation(child1_x, mutation_rate, False, max_nodes)
+                child1_y = smart_mutation(child1_y, mutation_rate, False, max_nodes)
                 new_population.append((child1_x, child1_y))
                 
                 if len(new_population) < pop_size:
-                    child2_x = smart_mutation(child2_x, mutation_rate, False)
-                    child2_y = smart_mutation(child2_y, mutation_rate, False)
+                    child2_x = smart_mutation(child2_x, mutation_rate, False, max_nodes)
+                    child2_y = smart_mutation(child2_y, mutation_rate, False, max_nodes)
                     new_population.append((child2_x, child2_y))
             else:
-                child1_x, child2_x = subtree_crossover(parent1[0], parent2[0])
-                child1_x = smart_mutation(child1_x, mutation_rate, True)
+                child1_x, child2_x = subtree_crossover(parent1[0], parent2[0], max_nodes)
+                child1_x = smart_mutation(child1_x, mutation_rate, True, max_nodes)
                 new_population.append((child1_x, None))
                 
                 if len(new_population) < pop_size:
-                    child2_x = smart_mutation(child2_x, mutation_rate, True)
+                    child2_x = smart_mutation(child2_x, mutation_rate, True, max_nodes)
                     new_population.append((child2_x, None))
         
         population = new_population[:pop_size]
         
-        if stagnation_counter > 5:  # Increased threshold
-            mutation_rate = min(0.4, mutation_rate * 1.3)  # More aggressive increase
+        if stagnation_counter > 5:
+            mutation_rate = min(0.4, mutation_rate * 1.3)
         elif stagnation_counter == 0:
-            mutation_rate = max(0.1, mutation_rate * 0.8)  # More aggressive decrease
+            mutation_rate = max(0.1, mutation_rate * 0.8)
     
     st.session_state['best_individual'] = best_ever_individual
     st.session_state['best_score'] = best_ever_score
@@ -513,6 +534,8 @@ def main():
                                       help="Probability of random changes in expressions")
     diversity_bonus = st.sidebar.slider("Diversity Bonus", 0.0, 1.0, 0.1,
                                         help="Encourages diverse patterns")
+    max_nodes = st.sidebar.number_input("Max Nodes per Tree", min_value=2, max_value=100, value=20,
+                                        help="Maximum number of nodes (subfunctions) in each expression tree")
 
     st.sidebar.header("Aesthetic Weights")
     st.sidebar.markdown("Adjust weights to prioritize visual qualities:")
@@ -574,7 +597,7 @@ def main():
             status_text = st.empty()
             
             for gen, max_score, all_time_best, population, scores in evolve_art(
-                generations, pop_size, plot_mode, weights, mutation_rate, elite_size, diversity_bonus
+                generations, pop_size, plot_mode, weights, mutation_rate, elite_size, diversity_bonus, max_nodes
             ):
                 if not st.session_state.running:
                     break
