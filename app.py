@@ -478,7 +478,7 @@ def evolve_art(generations, pop_size, plot_mode, weights, mutation_rate, elite_s
         else:
             stagnation_counter += 1
         
-        yield gen + 1, max_score, all_time_best, population, scores
+        yield gen + 1, max_score, best_ever_score, population, scores
         
         new_population = []
         sorted_pairs = sorted(zip(scores, population), key=lambda x: x[0], reverse=True)
@@ -612,7 +612,7 @@ def main():
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            for gen, max_score, all_time_best, population, scores in evolve_art(
+            for gen, max_score, best_ever_score, population, scores in evolve_art(
                 generations, pop_size, plot_mode, weights, mutation_rate, elite_size, diversity_bonus, max_nodes
             ):
                 if not st.session_state.running:
@@ -620,7 +620,7 @@ def main():
                 
                 progress = gen / generations
                 progress_bar.progress(progress)
-                status_text.text(f"Generation {gen}/{generations}: Best {max_score:.3f} | All-time Best: {all_time_best:.3f}")
+                status_text.text(f"Generation {gen}/{generations}: Best {max_score:.3f} | All-time Best: {best_ever_score:.3f}")
                 
                 if gen % max(1, generations // 5) == 0 or gen == generations:
                     figs = plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=line_width, line_color=line_color)
