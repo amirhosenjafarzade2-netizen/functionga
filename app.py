@@ -307,9 +307,12 @@ def compute_fitness(x_tree, y_tree=None, plot_mode='parametric',
 def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5, line_color='blue'):
     sorted_pairs = sorted(zip(scores, population), key=lambda x: x[0], reverse=True)[:top_n]
     
-    figs = []
+    fig, axs = plt.subplots(3, 1, figsize=(6, 12))  # 3 rows, 1 column
+    if top_n == 1:
+        axs = [axs]
+    
     for idx, (score, (x_tree, y_tree)) in enumerate(sorted_pairs):
-        fig, ax = plt.subplots(figsize=(6, 6))  # Individual figure for each plot
+        ax = axs[idx]
         try:
             if plot_mode == 'parametric':
                 t = np.linspace(0, 2 * np.pi, 300)
@@ -320,7 +323,7 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                     ax.plot(x, y, linewidth=line_width, color=line_color)
                     ax.set_aspect('equal')
-                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=10)
+                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=8)
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             elif plot_mode == 'polar':
@@ -331,7 +334,7 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                     ax.plot(x, y, linewidth=line_width, color=line_color)
                     ax.set_aspect('equal')
-                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nr = {x_tree.pretty_str()}\nNodes: {x_tree.size()}', fontsize=10)
+                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nr = {x_tree.pretty_str()}\nNodes: {x_tree.size()}', fontsize=8)
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             else:  # implicit
@@ -344,38 +347,152 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 cs = ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
                 if cs.collections:
                     ax.set_aspect('equal')
-                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\n{x_tree.pretty_str()} = 0\nNodes: {x_tree.size()}', fontsize=10)
+                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\n{x_tree.pretty_str()} = 0\nNodes: {x_tree.size()}', fontsize=8)
                 else:
                     ax.text(0.5, 0.5, 'No Contours', ha='center', va='center', transform=ax.transAxes)
             
             ax.grid(True, alpha=0.3)
             ax.set_xticks([])
             ax.set_yticks([])
-            plt.tight_layout()
             
-            # Add download button for this individual plot
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png')
-            buf.seek(0)
-            st.download_button(
-                label=f"Download Top {idx+1} Plot as PNG",
-                data=buf.getvalue(),
-                file_name=f"math_art_top_{idx+1}_gen_{gen}.png",
-                mime="image/png",
-                key=f"download_top_{idx+1}_gen_{gen}"
-            )
-            
-            figs.append(fig)
+            # Add download button for this subplot
+            fig_individual, ax_individual = plt.subplots(figsize=(6, 6))
+            try:
+                if plot_mode == 'parametric':
+                    t = np.linspace(0, 2 * np.pi, 300)
+                    x = np.array([x_tree.evaluate(t=ti) for ti in t])
+                    y = np.array([y_tree.evaluate(t=ti) for ti in t])
+                    x = np.clip(x, -50, 50)
+                    y = np.clip(y, -50, 50)
+                    if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
+                        ax_individual.plot(x, y, linewidth=line_width, color=line_color)
+                        ax_individual.set_aspect('equal')
+                        ax_individual.set_title(f'Top {idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=10)
+                    else:
+                        ax_individual.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax_individual.transAxes)
+                elif plot_mode == 'polar':
+                    t = np.linspace(0, 2 * np.pi, 300)
+                    r = np.array([x_tree.evaluate(t=ti) for ti in t])
+                    r = np.clip(r, -50, 50)
+                    x, y = r * np.cos(t), r * np.sin(t)
+                    if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
+                        ax_individual.plot(x, y, linewidth=line_width, color=line_color)
+                        ax_individual.set_aspect('equal')
+                        ax_individual.set_title(f'Top {idx+1} - Score: {score:.3f}\nr = {x_tree.pretty_str()}\nNodes: {x_tree.size()}', fontsize=10)
+                    else:
+                        ax_individual.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax_individual.transAxes)
+                else:  # implicit
+                    res = 50
+                    x_vals = np.linspace(-5, 5, res)
+                    y_vals = np.linspace(-5, 5, res)
+                    X, Y = np.meshgrid(x_vals, y_vals)
+                    Z = np.array([[x_tree.evaluate(x=xi, y=yi) for xi in x_vals] for yi in y_vals])
+                    Z = np.clip(Z, -50, 50)
+                    cs = ax_individual.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
+                    if cs.collections:
+                        ax_individual.set_aspect('equal')
+                        ax_individual.set_title(f'Top {idx+1} - Score: {score:.3f}\n{x_tree.pretty_str()} = 0\nNodes: {x_tree.size()}', fontsize=10)
+                    else:
+                        ax_individual.text(0.5, 0.5, 'No Contours', ha='center', va='center', transform=ax_individual.transAxes)
+                
+                ax_individual.grid(True, alpha=0.3)
+                ax_individual.set_xticks([])
+                ax_individual.set_yticks([])
+                plt.tight_layout()
+                
+                buf = io.BytesIO()
+                fig_individual.savefig(buf, format='png')
+                buf.seek(0)
+                st.download_button(
+                    label=f"Download Top {idx+1} Plot as PNG",
+                    data=buf.getvalue(),
+                    file_name=f"math_art_top_{idx+1}_gen_{gen}.png",
+                    mime="image/png",
+                    key=f"download_top_{idx+1}_gen_{gen}"
+                )
+                plt.close(fig_individual)
+                
+            except Exception as e:
+                plt.close(fig_individual)
+                st.warning(f"Error generating download for Top {idx+1}: {e}")
             
         except Exception as e:
             ax.text(0.5, 0.5, f'Error: {str(e)[:30]}', ha='center', va='center', transform=ax.transAxes)
-            plt.close(fig)
-            figs.append(None)
-        
-        st.pyplot(fig)
-        plt.close(fig)
     
-    return figs
+    plt.tight_layout()
+    st.pyplot(fig)
+    
+    # Add selectbox to enlarge a plot
+    with st.container():
+        st.write("Select a plot to enlarge:")
+        selected_plot = st.selectbox("Choose a plot", [f"Top {i+1}" for i in range(len(sorted_pairs))], key=f"enlarge_select_{gen}")
+        selected_idx = int(selected_plot.split()[1]) - 1
+        score, (x_tree, y_tree) = sorted_pairs[selected_idx]
+        
+        fig_enlarged, ax_enlarged = plt.subplots(figsize=(8, 8))
+        try:
+            if plot_mode == 'parametric':
+                t = np.linspace(0, 2 * np.pi, 600)
+                x = np.array([x_tree.evaluate(t=ti) for ti in t])
+                y = np.array([y_tree.evaluate(t=ti) for ti in t])
+                x = np.clip(x, -50, 50)
+                y = np.clip(y, -50, 50)
+                if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
+                    ax_enlarged.plot(x, y, linewidth=line_width * 1.5, color=line_color)
+                    ax_enlarged.set_aspect('equal')
+                    ax_enlarged.set_title(f'Enlarged Top {selected_idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=12)
+                else:
+                    ax_enlarged.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax_enlarged.transAxes)
+            elif plot_mode == 'polar':
+                t = np.linspace(0, 2 * np.pi, 600)
+                r = np.array([x_tree.evaluate(t=ti) for ti in t])
+                r = np.clip(r, -50, 50)
+                x, y = r * np.cos(t), r * np.sin(t)
+                if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
+                    ax_enlarged.plot(x, y, linewidth=line_width * 1.5, color=line_color)
+                    ax_enlarged.set_aspect('equal')
+                    ax_enlarged.set_title(f'Enlarged Top {selected_idx+1} - Score: {score:.3f}\nr = {x_tree.pretty_str()}\nNodes: {x_tree.size()}', fontsize=12)
+                else:
+                    ax_enlarged.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax_enlarged.transAxes)
+            else:  # implicit
+                res = 100
+                x_vals = np.linspace(-5, 5, res)
+                y_vals = np.linspace(-5, 5, res)
+                X, Y = np.meshgrid(x_vals, y_vals)
+                Z = np.array([[x_tree.evaluate(x=xi, y=yi) for xi in x_vals] for yi in y_vals])
+                Z = np.clip(Z, -50, 50)
+                cs = ax_enlarged.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width * 1.5)
+                if cs.collections:
+                    ax_enlarged.set_aspect('equal')
+                    ax_enlarged.set_title(f'Enlarged Top {selected_idx+1} - Score: {score:.3f}\n{x_tree.pretty_str()} = 0\nNodes: {x_tree.size()}', fontsize=12)
+                else:
+                    ax_enlarged.text(0.5, 0.5, 'No Contours', ha='center', va='center', transform=ax_enlarged.transAxes)
+            
+            ax_enlarged.grid(True, alpha=0.3)
+            ax_enlarged.set_xticks([])
+            ax_enlarged.set_yticks([])
+            plt.tight_layout()
+            
+            buf = io.BytesIO()
+            fig_enlarged.savefig(buf, format='png')
+            buf.seek(0)
+            st.download_button(
+                label=f"Download Enlarged Top {selected_idx+1} Plot as PNG",
+                data=buf.getvalue(),
+                file_name=f"math_art_enlarged_top_{selected_idx+1}_gen_{gen}.png",
+                mime="image/png",
+                key=f"download_enlarged_top_{selected_idx+1}_gen_{gen}"
+            )
+            
+            st.pyplot(fig_enlarged)
+            plt.close(fig_enlarged)
+            
+        except Exception as e:
+            st.error(f"Error enlarging Top {selected_idx+1}: {e}")
+            plt.close(fig_enlarged)
+    
+    plt.close(fig)
+    return fig
 
 def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'):
     x_tree, y_tree = best_individual
@@ -617,10 +734,8 @@ def main():
                 status_text.text(f"Generation {gen}/{generations}: Best {max_score:.3f} | All-time Best: {all_time_best:.3f}")
                 
                 if gen % max(1, generations // 5) == 0 or gen == generations:
-                    figs = plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=line_width, line_color=line_color)
-                    for fig in figs:
-                        if fig:
-                            plt.close(fig)
+                    fig = plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=line_width, line_color=line_color)
+                    plt.close(fig)
             
             if st.session_state.running:
                 st.session_state.running = False
