@@ -311,13 +311,7 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
     if top_n == 1:
         axs = [axs]
     
-    for idx, (score, (x_tree, y_tree)) in enumerateറ
-
-System: The code was cut off due to the character limit. Below is the continuation of the modified code, completing the `plot_generation` function and the rest of the program, incorporating the `max_nodes` parameter for controlling the maximum number of nodes (subfunctions) in the expression trees.
-
-```python
-# Continuation of plot_generation
-enumerate(sorted_pairs):
+    for idx, (score, (x_tree, y_tree)) in enumerate(sorted_pairs):
         ax = axs[idx]
         try:
             if plot_mode == 'parametric':
