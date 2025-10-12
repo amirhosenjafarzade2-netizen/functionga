@@ -312,11 +312,11 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
         fig, ax = plt.subplots(figsize=(6, 6))  # Individual figure for each plot
         try:
             if plot_mode == 'parametric':
-                t = np.linspace(0, 2 * np.pi, 300)
+                t = np.linspace(0, 2 * np.pi, 1000)
                 x = np.array([x_tree.evaluate(t=ti) for ti in t])
                 y = np.array([y_tree.evaluate(t=ti) for ti in t])
-                x = np.clip(x, -50, 50)
-                y = np.clip(y, -50, 50)
+                x = np.clip(x, -100, 100)
+                y = np.clip(y, -100, 100)
                 if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                     ax.plot(x, y, linewidth=line_width, color=line_color)
                     ax.set_aspect('equal')
@@ -324,9 +324,9 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             elif plot_mode == 'polar':
-                t = np.linspace(0, 2 * np.pi, 300)
+                t = np.linspace(0, 2 * np.pi, 1000)
                 r = np.array([x_tree.evaluate(t=ti) for ti in t])
-                r = np.clip(r, -50, 50)
+                r = np.clip(r, -100, 100)
                 x, y = r * np.cos(t), r * np.sin(t)
                 if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                     ax.plot(x, y, linewidth=line_width, color=line_color)
@@ -335,12 +335,12 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             else:  # implicit
-                res = 50
+                res = 100
                 x_vals = np.linspace(-5, 5, res)
                 y_vals = np.linspace(-5, 5, res)
                 X, Y = np.meshgrid(x_vals, y_vals)
                 Z = np.array([[x_tree.evaluate(x=xi, y=yi) for xi in x_vals] for yi in y_vals])
-                Z = np.clip(Z, -50, 50)
+                Z = np.clip(Z, -100, 100)
                 cs = ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
                 if cs.collections:
                     ax.set_aspect('equal')
@@ -411,7 +411,7 @@ def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'
             y_vals = np.linspace(-5, 5, res)
             X, Y = np.meshgrid(x_vals, y_vals)
             Z = np.array([[x_tree.evaluate(x=xi, y=yi) for xi in x_vals] for yi in y_vals])
-            Z = np.clip(Z, -50, 50)
+            Z = np.clip(Z, -100, 100)
             cs = ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
             if cs.collections:
                 ax.set_aspect('equal')
