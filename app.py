@@ -307,12 +307,9 @@ def compute_fitness(x_tree, y_tree=None, plot_mode='parametric',
 def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5, line_color='blue'):
     sorted_pairs = sorted(zip(scores, population), key=lambda x: x[0], reverse=True)[:top_n]
     
-    fig, axs = plt.subplots(1, top_n, figsize=(5 * top_n, 5))
-    if top_n == 1:
-        axs = [axs]
-    
+    figs = []
     for idx, (score, (x_tree, y_tree)) in enumerate(sorted_pairs):
-        ax = axs[idx]
+        fig, ax = plt.subplots(figsize=(6, 6))  # Individual figure for each plot
         try:
             if plot_mode == 'parametric':
                 t = np.linspace(0, 2 * np.pi, 300)
@@ -323,7 +320,7 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                     ax.plot(x, y, linewidth=line_width, color=line_color)
                     ax.set_aspect('equal')
-                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=8)
+                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nx = {x_tree.pretty_str()}\ny = {y_tree.pretty_str()}\nNodes: {x_tree.size() + y_tree.size()}', fontsize=10)
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             elif plot_mode == 'polar':
@@ -334,7 +331,7 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 if not (np.all(np.isnan(x)) or np.all(np.isnan(y))):
                     ax.plot(x, y, linewidth=line_width, color=line_color)
                     ax.set_aspect('equal')
-                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nr = {x_tree.pretty_str()}\nNodes: {x_tree.size()}', fontsize=8)
+                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\nr = {x_tree.pretty_str()}\nNodes: {x_tree.size()}', fontsize=10)
                 else:
                     ax.text(0.5, 0.5, 'Invalid Plot', ha='center', va='center', transform=ax.transAxes)
             else:  # implicit
@@ -347,19 +344,38 @@ def plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=1.5,
                 cs = ax.contour(X, Y, Z, levels=[0], colors=line_color, linewidths=line_width)
                 if cs.collections:
                     ax.set_aspect('equal')
-                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\n{x_tree.pretty_str()} = 0\nNodes: {x_tree.size()}', fontsize=8)
+                    ax.set_title(f'Top {idx+1} - Score: {score:.3f}\n{x_tree.pretty_str()} = 0\nNodes: {x_tree.size()}', fontsize=10)
                 else:
                     ax.text(0.5, 0.5, 'No Contours', ha='center', va='center', transform=ax.transAxes)
             
             ax.grid(True, alpha=0.3)
             ax.set_xticks([])
             ax.set_yticks([])
+            plt.tight_layout()
+            
+            # Add download button for this individual plot
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png')
+            buf.seek(0)
+            st.download_button(
+                label=f"Download Top {idx+1} Plot as PNG",
+                data=buf.getvalue(),
+                file_name=f"math_art_top_{idx+1}_gen_{gen}.png",
+                mime="image/png",
+                key=f"download_top_{idx+1}_gen_{gen}"
+            )
+            
+            figs.append(fig)
             
         except Exception as e:
             ax.text(0.5, 0.5, f'Error: {str(e)[:30]}', ha='center', va='center', transform=ax.transAxes)
+            plt.close(fig)
+            figs.append(None)
+        
+        st.pyplot(fig)
+        plt.close(fig)
     
-    plt.tight_layout()
-    return fig
+    return figs
 
 def plot_best(best_individual, plot_mode, score, line_width=2, line_color='blue'):
     x_tree, y_tree = best_individual
@@ -601,9 +617,10 @@ def main():
                 status_text.text(f"Generation {gen}/{generations}: Best {max_score:.3f} | All-time Best: {all_time_best:.3f}")
                 
                 if gen % max(1, generations // 5) == 0 or gen == generations:
-                    fig = plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=line_width, line_color=line_color)
-                    st.pyplot(fig)
-                    plt.close(fig)
+                    figs = plot_generation(population, scores, gen, plot_mode, top_n=3, line_width=line_width, line_color=line_color)
+                    for fig in figs:
+                        if fig:
+                            plt.close(fig)
             
             if st.session_state.running:
                 st.session_state.running = False
